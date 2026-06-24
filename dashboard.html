@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Mortgage Default Risk Model — Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #22263a;
+    --border: #2e3250;
+    --accent: #6c63ff;
+    --accent2: #00c9a7;
+    --accent3: #ff6b6b;
+    --accent4: #ffd93d;
+    --text: #e8eaf6;
+    --muted: #8b90b8;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; min-height: 100vh; }
+
+  /* Header */
+  .header { background: linear-gradient(135deg, #1a1d27 0%, #12142a 100%); border-bottom: 1px solid var(--border); padding: 24px 40px; display: flex; justify-content: space-between; align-items: center; }
+  .header h1 { font-size: 1.4rem; font-weight: 700; letter-spacing: -0.3px; }
+  .header h1 span { color: var(--accent); }
+  .badge { background: var(--accent); color: white; font-size: 0.7rem; padding: 4px 10px; border-radius: 20px; font-weight: 600; letter-spacing: 0.5px; }
+  .header-meta { color: var(--muted); font-size: 0.8rem; margin-top: 4px; }
+
+  /* Nav */
+  .nav { display: flex; gap: 4px; padding: 16px 40px 0; border-bottom: 1px solid var(--border); background: var(--surface); overflow-x: auto; }
+  .nav-btn { background: none; border: none; color: var(--muted); padding: 10px 18px; font-size: 0.85rem; cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.2s; white-space: nowrap; font-weight: 500; }
+  .nav-btn:hover { color: var(--text); }
+  .nav-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  /* Content */
+  .content { padding: 32px 40px; max-width: 1200px; margin: 0 auto; }
+  .tab { display: none; }
+  .tab.active { display: block; }
+
+  /* Cards */
+  .cards { display: grid; gap: 16px; }
+  .cards-4 { grid-template-columns: repeat(4, 1fr); }
+  .cards-3 { grid-template-columns: repeat(3, 1fr); }
+  .cards-2 { grid-template-columns: repeat(2, 1fr); }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
+  .card-title { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; font-weight: 600; }
+  .card-value { font-size: 2rem; font-weight: 700; }
+  .card-sub { font-size: 0.78rem; color: var(--muted); margin-top: 4px; }
+  .card.accent-green { border-color: rgba(0,201,167,0.3); }
+  .card.accent-purple { border-color: rgba(108,99,255,0.3); }
+  .card.accent-red { border-color: rgba(255,107,107,0.3); }
+  .card.accent-yellow { border-color: rgba(255,217,61,0.3); }
+
+  /* Section titles */
+  .section-title { font-size: 1rem; font-weight: 700; margin-bottom: 16px; margin-top: 28px; color: var(--text); display: flex; align-items: center; gap: 8px; }
+  .section-title::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+  /* Chart containers */
+  .chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; }
+  .chart-card h3 { font-size: 0.85rem; font-weight: 600; color: var(--muted); margin-bottom: 20px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .chart-wrap { position: relative; height: 280px; }
+  .chart-wrap-tall { position: relative; height: 380px; }
+
+  /* Model comparison table */
+  table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+  th { color: var(--muted); font-weight: 600; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.5px; padding: 10px 16px; text-align: left; border-bottom: 1px solid var(--border); }
+  td { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--surface2); }
+  .best { color: var(--accent2); font-weight: 700; }
+  .pill { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 0.72rem; font-weight: 600; }
+  .pill-green { background: rgba(0,201,167,0.15); color: var(--accent2); }
+  .pill-purple { background: rgba(108,99,255,0.15); color: var(--accent); }
+  .pill-red { background: rgba(255,107,107,0.15); color: var(--accent3); }
+
+  /* Feature importance bars */
+  .feat-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .feat-label { width: 220px; font-size: 0.8rem; color: var(--text); flex-shrink: 0; }
+  .feat-bar-wrap { flex: 1; background: var(--surface2); border-radius: 4px; height: 8px; overflow: hidden; }
+  .feat-bar { height: 100%; border-radius: 4px; transition: width 0.8s ease; }
+  .feat-val { width: 50px; font-size: 0.78rem; color: var(--muted); text-align: right; flex-shrink: 0; }
+
+  /* Business metrics */
+  .biz-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .biz-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; text-align: center; }
+  .biz-label { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+  .biz-val { font-size: 1.6rem; font-weight: 700; }
+  .biz-val.green { color: var(--accent2); }
+  .biz-val.red { color: var(--accent3); }
+  .biz-val.purple { color: var(--accent); }
+
+  /* Confusion matrix */
+  .cm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; max-width: 320px; margin: 0 auto; }
+  .cm-cell { border-radius: 8px; padding: 20px; text-align: center; }
+  .cm-cell .cm-num { font-size: 2rem; font-weight: 700; }
+  .cm-cell .cm-label { font-size: 0.72rem; color: var(--muted); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .cm-tp { background: rgba(0,201,167,0.2); border: 1px solid rgba(0,201,167,0.4); }
+  .cm-tn { background: rgba(108,99,255,0.2); border: 1px solid rgba(108,99,255,0.4); }
+  .cm-fp { background: rgba(255,217,61,0.15); border: 1px solid rgba(255,217,61,0.3); }
+  .cm-fn { background: rgba(255,107,107,0.2); border: 1px solid rgba(255,107,107,0.4); }
+  .cm-axis { display: flex; align-items: center; justify-content: center; font-size: 0.72rem; color: var(--muted); font-weight: 600; letter-spacing: 0.5px; }
+
+  /* Model params */
+  .param-group { margin-bottom: 24px; }
+  .param-group h4 { font-size: 0.8rem; font-weight: 700; color: var(--accent); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .param-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 0.83rem; }
+  .param-row:last-child { border-bottom: none; }
+  .param-key { color: var(--muted); }
+  .param-val { color: var(--text); font-weight: 500; font-family: monospace; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  @media (max-width: 768px) {
+    .content { padding: 20px 16px; }
+    .header { padding: 16px 20px; }
+    .nav { padding: 12px 16px 0; }
+    .cards-4, .cards-3, .cards-2 { grid-template-columns: repeat(2, 1fr); }
+    .biz-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>Mortgage Default Risk <span>Prediction</span> Model</h1>
+    <div class="header-meta">20,000 synthetic loan records · 3 models · 64 features · Python + scikit-learn</div>
+  </div>
+  <span class="badge">BUILT WITH CLAUDE CODE</span>
+</div>
+
+<div class="nav">
+  <button class="nav-btn active" onclick="showTab('overview')">📊 Overview</button>
+  <button class="nav-btn" onclick="showTab('models')">🤖 Model Comparison</button>
+  <button class="nav-btn" onclick="showTab('features')">🔍 Feature Importance</button>
+  <button class="nav-btn" onclick="showTab('business')">💰 Business Impact</button>
+  <button class="nav-btn" onclick="showTab('data')">📋 Data Stats</button>
+  <button class="nav-btn" onclick="showTab('params')">⚙️ Model Config</button>
+</div>
+
+<!-- ═══════════════ OVERVIEW ═══════════════ -->
+<div class="content">
+<div id="tab-overview" class="tab active">
+
+  <div class="cards cards-4">
+    <div class="card accent-purple">
+      <div class="card-title">Best ROC-AUC</div>
+      <div class="card-value" style="color:var(--accent)">0.676</div>
+      <div class="card-sub">Random Forest · vs 0.50 baseline</div>
+    </div>
+    <div class="card accent-green">
+      <div class="card-title">Best Calibration</div>
+      <div class="card-value" style="color:var(--accent2)">0.062</div>
+      <div class="card-sub">Brier Score · Gradient Boosting</div>
+    </div>
+    <div class="card accent-yellow">
+      <div class="card-title">Net Value / Cohort</div>
+      <div class="card-value" style="color:var(--accent4)">$8.3M</div>
+      <div class="card-sub">Loss avoided minus review costs</div>
+    </div>
+    <div class="card accent-red">
+      <div class="card-title">Default Rate</div>
+      <div class="card-value" style="color:var(--accent3)">6.7%</div>
+      <div class="card-sub">1,340 defaults in 20,000 loans</div>
+    </div>
+  </div>
+
+  <div class="section-title">Model Performance at a Glance</div>
+  <div class="cards cards-2">
+    <div class="chart-card">
+      <h3>ROC-AUC by Model</h3>
+      <div class="chart-wrap"><canvas id="aucChart"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <h3>PR-AUC by Model</h3>
+      <div class="chart-wrap"><canvas id="prChart"></canvas></div>
+    </div>
+  </div>
+
+  <div class="section-title">Top 5 Predictive Features</div>
+  <div class="chart-card">
+    <h3>Gradient Boosting Feature Importance (Top 5)</h3>
+    <div style="margin-top:8px">
+      <div class="feat-row"><div class="feat-label">risk_score</div><div class="feat-bar-wrap"><div class="feat-bar" style="width:100%;background:linear-gradient(90deg,#6c63ff,#a29bfe)"></div></div><div class="feat-val">20.3%</div></div>
+      <div class="feat-row"><div class="feat-label">ltv_ratio</div><div class="feat-bar-wrap"><div class="feat-bar" style="width:40%;background:linear-gradient(90deg,#00c9a7,#55efc4)"></div></div><div class="feat-val">8.1%</div></div>
+      <div class="feat-row"><div class="feat-label">payment_to_income</div><div class="feat-bar-wrap"><div class="feat-bar" style="width:37%;background:linear-gradient(90deg,#00c9a7,#55efc4)"></div></div><div class="feat-val">7.5%</div></div>
+      <div class="feat-row"><div class="feat-label">interest_rate</div><div class="feat-bar-wrap"><div class="feat-bar" style="width:32%;background:linear-gradient(90deg,#ffd93d,#fdcb6e)"></div></div><div class="feat-val">6.5%</div></div>
+      <div class="feat-row"><div class="feat-label">credit_score</div><div class="feat-bar-wrap"><div class="feat-bar" style="width:26%;background:linear-gradient(90deg,#ffd93d,#fdcb6e)"></div></div><div class="feat-val">5.4%</div></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ═══════════════ MODELS ═══════════════ -->
+<div id="tab-models" class="tab">
+
+  <div class="section-title">Model Comparison</div>
+  <div class="chart-card" style="padding:0;overflow:hidden">
+    <table>
+      <thead>
+        <tr>
+          <th>Model</th>
+          <th>ROC-AUC ↑</th>
+          <th>PR-AUC ↑</th>
+          <th>Brier Score ↓</th>
+          <th>Class Balance</th>
+          <th>Best For</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Logistic Regression</strong></td>
+          <td class="best">0.6747</td>
+          <td class="best">0.1529</td>
+          <td style="color:var(--accent3)">0.2171</td>
+          <td><span class="pill pill-purple">balanced</span></td>
+          <td style="color:var(--muted);font-size:0.8rem">Interpretability, regulatory</td>
+        </tr>
+        <tr>
+          <td><strong>Random Forest</strong></td>
+          <td class="best">0.6755</td>
+          <td>0.1484</td>
+          <td>0.1755</td>
+          <td><span class="pill pill-purple">balanced</span></td>
+          <td style="color:var(--muted);font-size:0.8rem">Non-linear interactions</td>
+        </tr>
+        <tr>
+          <td><strong>Gradient Boosting</strong></td>
+          <td>0.6476</td>
+          <td>0.1356</td>
+          <td><span class="best">0.0615</span></td>
+          <td><span class="pill pill-green">none</span></td>
+          <td style="color:var(--muted);font-size:0.8rem">Best probability calibration</td>
+        </tr>
+        <tr style="background:rgba(108,99,255,0.03)">
+          <td style="color:var(--muted);font-size:0.78rem">Random Baseline</td>
+          <td style="color:var(--muted)">0.500</td>
+          <td style="color:var(--muted)">0.067</td>
+          <td style="color:var(--muted)">—</td>
+          <td>—</td>
+          <td>—</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section-title">Confusion Matrix — Gradient Boosting (threshold = 0.108)</div>
+  <div class="cards cards-2">
+    <div class="chart-card" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px">
+      <div style="display:grid;grid-template-columns:auto 1fr 1fr;grid-template-rows:auto 1fr 1fr;gap:8px;align-items:center">
+        <div></div>
+        <div class="cm-axis">Predicted NO</div>
+        <div class="cm-axis">Predicted YES</div>
+        <div class="cm-axis" style="writing-mode:vertical-rl;transform:rotate(180deg)">Actual NO</div>
+        <div class="cm-cell cm-tn"><div class="cm-num">3,328</div><div class="cm-label">True Negative</div></div>
+        <div class="cm-cell cm-fp"><div class="cm-num" style="color:var(--accent4)">405</div><div class="cm-label">False Positive</div></div>
+        <div class="cm-axis" style="writing-mode:vertical-rl;transform:rotate(180deg)">Actual YES</div>
+        <div class="cm-cell cm-fn"><div class="cm-num" style="color:var(--accent3)">186</div><div class="cm-label">False Negative</div></div>
+        <div class="cm-cell cm-tp"><div class="cm-num" style="color:var(--accent2)">81</div><div class="cm-label">True Positive</div></div>
+      </div>
+    </div>
+    <div class="chart-card">
+      <h3>What these numbers mean</h3>
+      <div style="display:flex;flex-direction:column;gap:14px;margin-top:8px">
+        <div style="display:flex;gap:12px;align-items:flex-start">
+          <div style="width:12px;height:12px;border-radius:3px;background:var(--accent2);margin-top:3px;flex-shrink:0"></div>
+          <div><strong style="font-size:0.85rem">81 True Positives</strong><div style="font-size:0.78rem;color:var(--muted);margin-top:2px">Defaults the model correctly flagged — loans that would have lost money</div></div>
+        </div>
+        <div style="display:flex;gap:12px;align-items:flex-start">
+          <div style="width:12px;height:12px;border-radius:3px;background:var(--accent3);margin-top:3px;flex-shrink:0"></div>
+          <div><strong style="font-size:0.85rem">186 False Negatives</strong><div style="font-size:0.78rem;color:var(--muted);margin-top:2px">Defaults the model missed — these still result in losses</div></div>
+        </div>
+        <div style="display:flex;gap:12px;align-items:flex-start">
+          <div style="width:12px;height:12px;border-radius:3px;background:var(--accent4);margin-top:3px;flex-shrink:0"></div>
+          <div><strong style="font-size:0.85rem">405 False Positives</strong><div style="font-size:0.78rem;color:var(--muted);margin-top:2px">Good loans flagged for review — cost $500 each in manual review</div></div>
+        </div>
+        <div style="display:flex;gap:12px;align-items:flex-start">
+          <div style="width:12px;height:12px;border-radius:3px;background:var(--accent);margin-top:3px;flex-shrink:0"></div>
+          <div><strong style="font-size:0.85rem">3,328 True Negatives</strong><div style="font-size:0.78rem;color:var(--muted);margin-top:2px">Good loans correctly approved — no action needed</div></div>
+        </div>
+        <div style="background:var(--surface2);border-radius:8px;padding:12px;font-size:0.78rem;color:var(--muted);margin-top:4px">
+          <strong style="color:var(--text)">Decision threshold: 0.108</strong><br>
+          Tuned to maximise F1 score — lower than default 0.5 because catching defaults (rare at 6.7%) is more valuable than avoiding false alarms.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-title">Brier Score Comparison (lower = better calibrated)</div>
+  <div class="chart-card">
+    <h3>Probability Calibration Quality</h3>
+    <div class="chart-wrap"><canvas id="brierChart"></canvas></div>
+  </div>
+
+</div>
+
+<!-- ═══════════════ FEATURES ═══════════════ -->
+<div id="tab-features" class="tab">
+
+  <div class="section-title">Gradient Boosting — Top 15 Features</div>
+  <div class="chart-card">
+    <h3>Feature Importance (Mean Decrease in Impurity)</h3>
+    <div class="chart-wrap-tall"><canvas id="featChart"></canvas></div>
+  </div>
+
+  <div class="section-title">Random Forest — Top 15 Features</div>
+  <div class="chart-card">
+    <h3>Feature Importance (Mean Decrease in Impurity)</h3>
+    <div class="chart-wrap-tall"><canvas id="featRfChart"></canvas></div>
+  </div>
+
+  <div class="section-title">Engineered Feature Descriptions</div>
+  <div class="chart-card" style="padding:0;overflow:hidden">
+    <table>
+      <thead>
+        <tr><th>Feature</th><th>Type</th><th>Business Meaning</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code style="color:var(--accent)">risk_score</code></td><td><span class="pill pill-purple">Engineered</span></td><td style="font-size:0.82rem;color:var(--muted)">Composite of credit score, LTV, DTI, reserves, derogatory marks — mimics underwriter intuition</td></tr>
+        <tr><td><code style="color:var(--accent)">payment_to_income</code></td><td><span class="pill pill-purple">Engineered</span></td><td style="font-size:0.82rem;color:var(--muted)">Front-end DTI: monthly mortgage payment ÷ gross monthly income</td></tr>
+        <tr><td><code style="color:var(--accent)">ltv_above_80</code></td><td><span class="pill pill-purple">Engineered</span></td><td style="font-size:0.82rem;color:var(--muted)">Binary flag: LTV > 80% triggers PMI requirement — a key underwriting threshold</td></tr>
+        <tr><td><code style="color:var(--accent)">dti_above_43</code></td><td><span class="pill pill-purple">Engineered</span></td><td style="font-size:0.82rem;color:var(--muted)">Binary flag: DTI > 43% breaches the Qualified Mortgage (QM) rule limit</td></tr>
+        <tr><td><code style="color:var(--accent)">credit_utilization_proxy</code></td><td><span class="pill pill-purple">Engineered</span></td><td style="font-size:0.82rem;color:var(--muted)">Derogatory marks ÷ open accounts — approximates revolving utilisation risk</td></tr>
+        <tr><td><code style="color:var(--accent)">log_income</code></td><td><span class="pill pill-purple">Engineered</span></td><td style="font-size:0.82rem;color:var(--muted)">Log-transform of income to compress right-skew in the distribution</td></tr>
+        <tr><td><code style="color:var(--text)">credit_score</code></td><td><span class="pill pill-green">Raw</span></td><td style="font-size:0.82rem;color:var(--muted)">FICO score at origination (500–850)</td></tr>
+        <tr><td><code style="color:var(--text)">ltv_ratio</code></td><td><span class="pill pill-green">Raw</span></td><td style="font-size:0.82rem;color:var(--muted)">Loan amount ÷ appraised property value × 100</td></tr>
+        <tr><td><code style="color:var(--text)">dti_ratio</code></td><td><span class="pill pill-green">Raw</span></td><td style="font-size:0.82rem;color:var(--muted)">Total monthly debt payments ÷ gross monthly income</td></tr>
+        <tr><td><code style="color:var(--text)">num_derogatory</code></td><td><span class="pill pill-green">Raw</span></td><td style="font-size:0.82rem;color:var(--muted)">Count of derogatory marks (late payments, collections, charge-offs)</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ═══════════════ BUSINESS IMPACT ═══════════════ -->
+<div id="tab-business" class="tab">
+
+  <div class="section-title">Business Value — 4,000 Loan Test Cohort</div>
+  <div class="biz-grid">
+    <div class="biz-card">
+      <div class="biz-label">Defaults Caught</div>
+      <div class="biz-val green">81</div>
+      <div style="font-size:0.75rem;color:var(--muted);margin-top:6px">of 267 total defaults (30.3%)</div>
+    </div>
+    <div class="biz-card">
+      <div class="biz-label">Loss Avoided</div>
+      <div class="biz-val green">$8.5M</div>
+      <div style="font-size:0.75rem;color:var(--muted);margin-top:6px">81 × $350k avg loan × 30% LGD</div>
+    </div>
+    <div class="biz-card">
+      <div class="biz-label">Review Cost</div>
+      <div class="biz-val red">$202.5K</div>
+      <div style="font-size:0.75rem;color:var(--muted);margin-top:6px">405 false positives × $500/review</div>
+    </div>
+    <div class="biz-card" style="border-color:rgba(0,201,167,0.4)">
+      <div class="biz-label">Net Business Value</div>
+      <div class="biz-val green">$8.3M</div>
+      <div style="font-size:0.75rem;color:var(--muted);margin-top:6px">Per 4,000 loans screened</div>
+    </div>
+    <div class="biz-card">
+      <div class="biz-label">Detection Rate</div>
+      <div class="biz-val purple">30.3%</div>
+      <div style="font-size:0.75rem;color:var(--muted);margin-top:6px">Defaults caught by model</div>
+    </div>
+    <div class="biz-card">
+      <div class="biz-label">False Alarm Rate</div>
+      <div class="biz-val" style="color:var(--accent4)">10.8%</div>
+      <div style="font-size:0.75rem;color:var(--muted);margin-top:6px">Good loans flagged for review</div>
+    </div>
+  </div>
+
+  <div class="section-title">Projected Annual Impact</div>
+  <div class="chart-card">
+    <h3>Extrapolated to 500,000 Annual Originations (Rocket Mortgage Scale)</h3>
+    <div class="chart-wrap"><canvas id="bizChart"></canvas></div>
+  </div>
+
+  <div class="section-title">Assumptions</div>
+  <div class="chart-card" style="padding:0;overflow:hidden">
+    <table>
+      <thead><tr><th>Assumption</th><th>Value</th><th>Rationale</th></tr></thead>
+      <tbody>
+        <tr><td>Average loan amount</td><td style="font-weight:600">$350,000</td><td style="color:var(--muted);font-size:0.82rem">US median conforming loan 2024</td></tr>
+        <tr><td>Loss Given Default (LGD)</td><td style="font-weight:600">30%</td><td style="color:var(--muted);font-size:0.82rem">Industry standard for residential mortgages post-foreclosure recovery</td></tr>
+        <tr><td>Manual review cost</td><td style="font-weight:600">$500</td><td style="color:var(--muted);font-size:0.82rem">Conservative estimate for underwriting review per flagged loan</td></tr>
+        <tr><td>Decision threshold</td><td style="font-weight:600">0.108</td><td style="color:var(--muted);font-size:0.82rem">Optimised for F1 score, not default 0.5</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ═══════════════ DATA STATS ═══════════════ -->
+<div id="tab-data" class="tab">
+
+  <div class="section-title">Dataset Overview</div>
+  <div class="cards cards-4">
+    <div class="card"><div class="card-title">Total Loans</div><div class="card-value">20,000</div><div class="card-sub">80% train / 20% test</div></div>
+    <div class="card"><div class="card-title">Default Rate</div><div class="card-value" style="color:var(--accent3)">6.7%</div><div class="card-sub">1,340 defaults</div></div>
+    <div class="card"><div class="card-title">Total Features</div><div class="card-value" style="color:var(--accent)">64</div><div class="card-sub">After engineering + OHE</div></div>
+    <div class="card"><div class="card-title">Data Source</div><div class="card-value" style="font-size:1.1rem">Synthetic</div><div class="card-sub">HMDA-inspired distributions</div></div>
+  </div>
+
+  <div class="section-title">Loan Characteristics</div>
+  <div class="cards cards-3">
+    <div class="card"><div class="card-title">Avg Credit Score</div><div class="card-value">709</div><div class="card-sub">Range: 500–850</div></div>
+    <div class="card"><div class="card-title">Avg LTV Ratio</div><div class="card-value">72.5%</div><div class="card-sub">Range: 50–105%</div></div>
+    <div class="card"><div class="card-title">Avg DTI Ratio</div><div class="card-value">36.1%</div><div class="card-sub">Range: 15–65%</div></div>
+    <div class="card"><div class="card-title">Avg Loan Amount</div><div class="card-value" style="font-size:1.5rem">$185,755</div><div class="card-sub">Log-normal distribution</div></div>
+    <div class="card"><div class="card-title">Avg Interest Rate</div><div class="card-value">4.72%</div><div class="card-sub">Range: 2.5–9%</div></div>
+    <div class="card"><div class="card-title">Loan Terms</div><div class="card-value" style="font-size:1.2rem">15 / 30 yr</div><div class="card-sub">25% / 75% split</div></div>
+  </div>
+
+  <div class="section-title">Class Distribution</div>
+  <div class="cards cards-2">
+    <div class="chart-card">
+      <h3>Default vs Non-Default</h3>
+      <div class="chart-wrap"><canvas id="classChart"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <h3>Loan Purpose Mix</h3>
+      <div class="chart-wrap"><canvas id="purposeChart"></canvas></div>
+    </div>
+  </div>
+
+  <div class="section-title">Default Rate by Segment</div>
+  <div class="chart-card">
+    <h3>Default Rate by Occupancy Type</h3>
+    <div class="chart-wrap" style="height:160px"><canvas id="occChart"></canvas></div>
+  </div>
+
+</div>
+
+<!-- ═══════════════ MODEL CONFIG ═══════════════ -->
+<div id="tab-params" class="tab">
+  <div class="section-title">Model Hyperparameters</div>
+  <div class="cards cards-3">
+    <div class="chart-card">
+      <div class="param-group">
+        <h4>Logistic Regression</h4>
+        <div class="param-row"><span class="param-key">C (regularisation)</span><span class="param-val">0.1</span></div>
+        <div class="param-row"><span class="param-key">max_iter</span><span class="param-val">1000</span></div>
+        <div class="param-row"><span class="param-key">class_weight</span><span class="param-val">balanced</span></div>
+        <div class="param-row"><span class="param-key">solver</span><span class="param-val">lbfgs</span></div>
+        <div class="param-row"><span class="param-key">penalty</span><span class="param-val">l2</span></div>
+      </div>
+    </div>
+    <div class="chart-card">
+      <div class="param-group">
+        <h4>Random Forest</h4>
+        <div class="param-row"><span class="param-key">n_estimators</span><span class="param-val">300</span></div>
+        <div class="param-row"><span class="param-key">max_depth</span><span class="param-val">8</span></div>
+        <div class="param-row"><span class="param-key">min_samples_leaf</span><span class="param-val">20</span></div>
+        <div class="param-row"><span class="param-key">class_weight</span><span class="param-val">balanced</span></div>
+        <div class="param-row"><span class="param-key">n_jobs</span><span class="param-val">-1 (all cores)</span></div>
+      </div>
+    </div>
+    <div class="chart-card">
+      <div class="param-group">
+        <h4>Gradient Boosting</h4>
+        <div class="param-row"><span class="param-key">n_estimators</span><span class="param-val">300</span></div>
+        <div class="param-row"><span class="param-key">learning_rate</span><span class="param-val">0.05</span></div>
+        <div class="param-row"><span class="param-key">max_depth</span><span class="param-val">4</span></div>
+        <div class="param-row"><span class="param-key">subsample</span><span class="param-val">0.8</span></div>
+        <div class="param-row"><span class="param-key">loss</span><span class="param-val">log_loss</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-title">Preprocessing Pipeline</div>
+  <div class="chart-card" style="padding:0;overflow:hidden">
+    <table>
+      <thead><tr><th>Step</th><th>Applied To</th><th>Method</th><th>Reason</th></tr></thead>
+      <tbody>
+        <tr><td>Imputation</td><td style="color:var(--muted)">All features</td><td><code style="color:var(--accent)">median / most_frequent</code></td><td style="color:var(--muted);font-size:0.82rem">Handles missing values robustly</td></tr>
+        <tr><td>Scaling</td><td style="color:var(--muted)">Numeric (22 features)</td><td><code style="color:var(--accent)">StandardScaler</code></td><td style="color:var(--muted);font-size:0.82rem">Required for Logistic Regression convergence</td></tr>
+        <tr><td>Encoding</td><td style="color:var(--muted)">Categorical (7 features)</td><td><code style="color:var(--accent)">OneHotEncoder</code></td><td style="color:var(--muted);font-size:0.82rem">Converts to 42 binary columns; unknown values ignored</td></tr>
+        <tr><td>CV Strategy</td><td style="color:var(--muted)">Train set</td><td><code style="color:var(--accent)">StratifiedKFold(n=5)</code></td><td style="color:var(--muted);font-size:0.82rem">Preserves class ratio in each fold (imbalanced data)</td></tr>
+        <tr><td>Threshold</td><td style="color:var(--muted)">Final prediction</td><td><code style="color:var(--accent)">0.108 (F1-optimal)</code></td><td style="color:var(--muted);font-size:0.82rem">Default 0.5 misses too many rare defaults</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section-title">Cross-Validation Results (5-fold, train set)</div>
+  <div class="chart-card">
+    <h3>ROC-AUC Across Folds</h3>
+    <div class="chart-wrap"><canvas id="cvChart"></canvas></div>
+  </div>
+</div>
+</div>
+
+<script>
+function showTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  event.target.classList.add('active');
+  setTimeout(renderCharts, 50);
+}
+
+const COLORS = { purple:'#6c63ff', green:'#00c9a7', red:'#ff6b6b', yellow:'#ffd93d', blue:'#74b9ff', pink:'#fd79a8' };
+const defaults = { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ labels:{ color:'#8b90b8', font:{size:11} } } }, scales:{ x:{ grid:{ color:'#2e3250' }, ticks:{ color:'#8b90b8' } }, y:{ grid:{ color:'#2e3250' }, ticks:{ color:'#8b90b8' } } } };
+
+let rendered = false;
+function renderCharts() {
+  if (rendered) return; rendered = true;
+
+  // AUC Chart
+  new Chart(document.getElementById('aucChart'), { type:'bar', data:{ labels:['Logistic Regression','Random Forest','Gradient Boosting','Baseline'], datasets:[{ label:'ROC-AUC', data:[0.6747,0.6755,0.6476,0.5], backgroundColor:[COLORS.purple,COLORS.green,COLORS.yellow,'#444'], borderRadius:6 }] }, options:{ ...defaults, plugins:{ legend:{display:false} }, scales:{ ...defaults.scales, y:{ ...defaults.scales.y, min:0.4, max:0.75, ticks:{ color:'#8b90b8' }, grid:{ color:'#2e3250' } } } } });
+
+  // PR Chart
+  new Chart(document.getElementById('prChart'), { type:'bar', data:{ labels:['Logistic Regression','Random Forest','Gradient Boosting','Baseline'], datasets:[{ label:'PR-AUC', data:[0.1529,0.1484,0.1356,0.067], backgroundColor:[COLORS.purple,COLORS.green,COLORS.yellow,'#444'], borderRadius:6 }] }, options:{ ...defaults, plugins:{ legend:{display:false} }, scales:{ ...defaults.scales, y:{ ...defaults.scales.y, min:0, max:0.2, ticks:{ color:'#8b90b8' }, grid:{ color:'#2e3250' } } } } });
+
+  // Brier Chart
+  new Chart(document.getElementById('brierChart'), { type:'bar', data:{ labels:['Logistic Regression','Random Forest','Gradient Boosting'], datasets:[{ label:'Brier Score (lower = better)', data:[0.2171,0.1755,0.0615], backgroundColor:[COLORS.red,COLORS.yellow,COLORS.green], borderRadius:6 }] }, options:{ ...defaults, plugins:{ legend:{display:false} }, scales:{ ...defaults.scales, y:{ ...defaults.scales.y, min:0, max:0.25, ticks:{ color:'#8b90b8' }, grid:{ color:'#2e3250' } } } } });
+
+  // Feature Importance - GB
+  const gbLabels = ['risk_score','ltv_ratio','payment_to_income','interest_rate','credit_score','property_value','dti_ratio','loan_amount','employment_years','annual_income','log_income','credit_util_proxy','occupancy_Investment','num_open_accounts','reserves_months'];
+  const gbVals = [0.2027,0.0814,0.0752,0.0647,0.0537,0.0533,0.0529,0.0465,0.0398,0.0372,0.0370,0.0327,0.0250,0.0223,0.0219];
+  new Chart(document.getElementById('featChart'), { type:'bar', data:{ labels:[...gbLabels].reverse(), datasets:[{ label:'Importance', data:[...gbVals].reverse(), backgroundColor: gbVals.map((_,i) => i===0?COLORS.purple:i<3?COLORS.green:COLORS.blue).reverse(), borderRadius:4 }] }, options:{ ...defaults, indexAxis:'y', plugins:{ legend:{display:false} }, scales:{ x:{ ...defaults.scales.x, ticks:{ color:'#8b90b8' }, grid:{ color:'#2e3250' } }, y:{ ...defaults.scales.y, ticks:{ color:'#e8eaf6', font:{size:11} }, grid:{ display:false } } } } });
+
+  // Feature Importance - RF
+  const rfLabels = ['risk_score','ltv_ratio','employment_years','interest_rate','credit_score','dti_ratio','occupancy_Primary','occupancy_Investment','payment_to_income','property_value','loan_amount','ltv_above_80','credit_util_proxy','annual_income','log_income'];
+  const rfVals = [0.1571,0.0884,0.0594,0.0546,0.0431,0.0380,0.0380,0.0380,0.0366,0.0345,0.0345,0.0345,0.0343,0.0342,0.0331];
+  new Chart(document.getElementById('featRfChart'), { type:'bar', data:{ labels:[...rfLabels].reverse(), datasets:[{ label:'Importance', data:[...rfVals].reverse(), backgroundColor:COLORS.green, borderRadius:4 }] }, options:{ ...defaults, indexAxis:'y', plugins:{ legend:{display:false} }, scales:{ x:{ ...defaults.scales.x, ticks:{ color:'#8b90b8' }, grid:{ color:'#2e3250' } }, y:{ ...defaults.scales.y, ticks:{ color:'#e8eaf6', font:{size:11} }, grid:{ display:false } } } } });
+
+  // Business chart
+  const scale = 500000/4000;
+  new Chart(document.getElementById('bizChart'), { type:'bar', data:{ labels:['Loss Avoided','Review Cost','Net Value'], datasets:[{ label:'Annual $ (500k originations)', data:[8505000*scale, 202500*scale, 8302500*scale], backgroundColor:[COLORS.green, COLORS.red, COLORS.purple], borderRadius:8 }] }, options:{ ...defaults, plugins:{ legend:{display:false}, tooltip:{ callbacks:{ label: ctx => '$' + (ctx.parsed.y/1e6).toFixed(1) + 'B' } } }, scales:{ x:{ ...defaults.scales.x, ticks:{ color:'#8b90b8' }, grid:{ display:false } }, y:{ ...defaults.scales.y, ticks:{ color:'#8b90b8', callback: v => '$'+v/1e6+'B' }, grid:{ color:'#2e3250' } } } } });
+
+  // Class distribution
+  new Chart(document.getElementById('classChart'), { type:'doughnut', data:{ labels:['No Default (93.3%)','Default (6.7%)'], datasets:[{ data:[18660,1340], backgroundColor:[COLORS.purple, COLORS.red], borderWidth:0 }] }, options:{ ...defaults, scales:undefined, cutout:'65%' } });
+
+  // Loan purpose
+  new Chart(document.getElementById('purposeChart'), { type:'doughnut', data:{ labels:['Purchase (55%)','Refi Rate/Term (25%)','Refi Cash-Out (20%)'], datasets:[{ data:[55,25,20], backgroundColor:[COLORS.blue, COLORS.green, COLORS.yellow], borderWidth:0 }] }, options:{ ...defaults, scales:undefined, cutout:'65%' } });
+
+  // Occupancy default rate
+  new Chart(document.getElementById('occChart'), { type:'bar', data:{ labels:['Primary Residence','Second Home','Investment Property'], datasets:[{ label:'Default Rate', data:[5.5,7.7,11.5], backgroundColor:[COLORS.green, COLORS.yellow, COLORS.red], borderRadius:6 }] }, options:{ ...defaults, plugins:{ legend:{display:false} }, scales:{ x:{ ...defaults.scales.x, ticks:{ color:'#8b90b8' }, grid:{ display:false } }, y:{ ...defaults.scales.y, ticks:{ color:'#8b90b8', callback: v=>v+'%' }, grid:{ color:'#2e3250' } } } } });
+
+  // CV chart
+  new Chart(document.getElementById('cvChart'), { type:'line', data:{ labels:['Fold 1','Fold 2','Fold 3','Fold 4','Fold 5'], datasets:[ { label:'Logistic Regression', data:[0.671,0.678,0.673,0.676,0.672], borderColor:COLORS.purple, tension:0.3, fill:false }, { label:'Random Forest', data:[0.674,0.680,0.671,0.678,0.673], borderColor:COLORS.green, tension:0.3, fill:false }, { label:'Gradient Boosting', data:[0.645,0.651,0.648,0.650,0.644], borderColor:COLORS.yellow, tension:0.3, fill:false } ] }, options:{ ...defaults, scales:{ x:{ ...defaults.scales.x, ticks:{ color:'#8b90b8' }, grid:{ color:'#2e3250' } }, y:{ ...defaults.scales.y, min:0.62, max:0.70, ticks:{ color:'#8b90b8' }, grid:{ color:'#2e3250' } } } } });
+}
+
+renderCharts();
+</script>
+</body>
+</html>
